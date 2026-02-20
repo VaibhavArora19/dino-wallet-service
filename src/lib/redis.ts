@@ -1,6 +1,8 @@
 import Redis from "ioredis";
 
-export const redis = new Redis(Bun.env.REDIS_URL!, {
+import { config } from "../config";
+
+export const redis = new Redis(config.redis.url, {
   lazyConnect: true,
   maxRetriesPerRequest: 3,
 });

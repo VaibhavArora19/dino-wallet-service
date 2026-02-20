@@ -1,12 +1,13 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { redis } from "../../lib/redis";
+import { config } from "../../config";
 import { WalletError } from "../../lib/errors";
 import { ledgerEntries, transactions, wallets } from "../../db/schema";
 
 const IDEMPOTENCY_TTL = 60 * 60 * 24; // 24 hours in seconds
 
-const TREASURY_WALLET_ID = "TREASURY_ACCOUNT_ID"; //TODO: replace with actual treasury wallet id
+const TREASURY_WALLET_ID = config.wallet.treasuryWalletId;
 
 export class WalletService {
   async topUp(walletId: string, idempotencyKey: string, amount: number) {
