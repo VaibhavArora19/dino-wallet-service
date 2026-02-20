@@ -8,7 +8,7 @@ export const wallet = new Elysia({ prefix: "/wallet" })
     async ({ body }) => {
       const walletService = new WalletService();
 
-      await walletService.topUp(
+      return walletService.topUp(
         body.walletId,
         body.idempotencyKey,
         body.amount,
@@ -23,7 +23,22 @@ export const wallet = new Elysia({ prefix: "/wallet" })
     async ({ body }) => {
       const walletService = new WalletService();
 
-      await walletService.spend(
+      return walletService.spend(
+        body.walletId,
+        body.idempotencyKey,
+        body.amount,
+      );
+    },
+    {
+      body: WalletModel.assetTransactionBody,
+    },
+  )
+  .post(
+    "/bonus",
+    async ({ body }) => {
+      const walletService = new WalletService();
+
+      return walletService.addBonus(
         body.walletId,
         body.idempotencyKey,
         body.amount,

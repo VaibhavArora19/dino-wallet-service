@@ -4,7 +4,7 @@ import {
   uuid,
   timestamp,
   pgEnum,
-  doublePrecision,
+  numeric,
 } from "drizzle-orm/pg-core";
 
 export const accountTypeEnum = pgEnum("account_type", ["treasury", "user"]);
@@ -40,7 +40,7 @@ export const wallets = pgTable("wallets", {
   asset_id: uuid("asset_id")
     .references(() => assets.id)
     .notNull(),
-  balance: doublePrecision("balance").default(0).notNull(),
+  balance: numeric("balance", { precision: 20, scale: 8 }).default("0").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -52,7 +52,7 @@ export const transactions = pgTable("transactions", {
   asset_id: uuid("asset_id")
     .references(() => assets.id)
     .notNull(),
-  amount: doublePrecision("amount").notNull(),
+  amount: numeric("amount", { precision: 20, scale: 8 }).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -66,6 +66,7 @@ export const ledgerEntries = pgTable("ledger_entries", {
     .references(() => wallets.id)
     .notNull(),
   direction: entryDirectionEnum("direction").notNull(),
+  amount: numeric("amount", { precision: 20, scale: 8 }).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

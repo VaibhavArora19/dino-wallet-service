@@ -57,7 +57,7 @@ export class WalletService {
         sql`SELECT * FROM wallets WHERE id = ${TREASURY_WALLET_ID} FOR UPDATE`,
       );
 
-      if ((treasury.balance as bigint) < amount) {
+      if (Number(treasury.balance) < amount) {
         throw new WalletError("Treasury insufficient funds", 422);
       }
 
@@ -67,7 +67,7 @@ export class WalletService {
           idempotency_key: idempotencyKey,
           type,
           asset_id: wallet.asset_id as string,
-          amount,
+          amount: String(amount),
         })
         .returning();
 
@@ -75,12 +75,14 @@ export class WalletService {
         {
           transaction_id: transaction.id,
           wallet_id: TREASURY_WALLET_ID,
-          direction: "debit",
+          direction: "debit" as const,
+          amount: String(amount),
         },
         {
           transaction_id: transaction.id,
           wallet_id: wallet.id as string,
-          direction: "credit",
+          direction: "credit" as const,
+          amount: String(amount),
         },
       ]);
 
@@ -118,12 +120,13 @@ export class WalletService {
 
       if (!wallet) throw new WalletError("Wallet not found", 404);
 
-      const [treasury] = await tx.execute(
-        sql`SELECT * FROM wallets WHERE id = ${TREASURY_WALLET_ID} FOR UPDATE`,
+      // Lock treasury row for the balance update below
+      await tx.execute(
+        sql`SELECT id FROM wallets WHERE id = ${TREASURY_WALLET_ID} FOR UPDATE`,
       );
 
-      if ((treasury.balance as bigint) < amount) {
-        throw new WalletError("Treasury insufficient funds", 422);
+      if (Number(wallet.balance) < amount) {
+        throw new WalletError("Insufficient funds", 422);
       }
 
       const [transaction] = await tx
@@ -132,7 +135,7 @@ export class WalletService {
           idempotency_key: idempotencyKey,
           type: "spend",
           asset_id: wallet.asset_id as string,
-          amount,
+          amount: String(amount),
         })
         .returning();
 
@@ -140,12 +143,14 @@ export class WalletService {
         {
           transaction_id: transaction.id,
           wallet_id: TREASURY_WALLET_ID,
-          direction: "credit",
+          direction: "credit" as const,
+          amount: String(amount),
         },
         {
           transaction_id: transaction.id,
           wallet_id: wallet.id as string,
-          direction: "debit",
+          direction: "debit" as const,
+          amount: String(amount),
         },
       ]);
 
@@ -160,6 +165,7 @@ export class WalletService {
         .update(wallets)
         .set({ balance: sql`balance + ${amount}` })
         .where(eq(wallets.id, TREASURY_WALLET_ID));
+
       return transaction;
     });
 
