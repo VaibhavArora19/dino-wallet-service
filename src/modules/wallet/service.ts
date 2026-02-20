@@ -1,7 +1,10 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "../../db";
+import { redis } from "../../lib/redis";
 import { WalletError } from "../../lib/errors";
 import { ledgerEntries, transactions, wallets } from "../../db/schema";
+
+const IDEMPOTENCY_TTL = 60 * 60 * 24; // 24 hours in seconds
 
 const TREASURY_WALLET_ID = "TREASURY_ACCOUNT_ID"; //TODO: replace with actual treasury wallet id
 
@@ -18,14 +21,31 @@ export class WalletService {
     return this.debitWallet(walletId, idempotencyKey, amount);
   }
 
+  private async resolveIdempotency(idempotencyKey: string) {
+    const cached = await redis.get(`wallet:idempotency:${idempotencyKey}`);
+    if (cached) return JSON.parse(cached);
+    return null;
+  }
+
+  private async storeIdempotency(idempotencyKey: string, result: unknown) {
+    await redis.set(
+      `wallet:idempotency:${idempotencyKey}`,
+      JSON.stringify(result),
+      "EX",
+      IDEMPOTENCY_TTL,
+    );
+  }
+
   private async creditWallet(
     walletId: string,
     idempotencyKey: string,
     amount: number,
     type: "topup" | "bonus",
   ) {
-    //TODO: check for idempotency key in redis
-    await db.transaction(async (tx) => {
+    const cached = await this.resolveIdempotency(idempotencyKey);
+    if (cached) return cached;
+
+    const result = await db.transaction(async (tx) => {
       const [wallet] = await tx.execute(
         sql`SELECT * FROM wallets WHERE id = ${walletId} FOR UPDATE`,
       );
@@ -77,6 +97,9 @@ export class WalletService {
 
       return transaction;
     });
+
+    await this.storeIdempotency(idempotencyKey, result);
+    return result;
   }
 
   private async debitWallet(
@@ -84,9 +107,10 @@ export class WalletService {
     idempotencyKey: string,
     amount: number,
   ) {
-    //TODO: check for idempotency key in redis
+    const cached = await this.resolveIdempotency(idempotencyKey);
+    if (cached) return cached;
 
-    await db.transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
       const [wallet] = await tx.execute(
         sql`SELECT * FROM wallets WHERE id = ${walletId} FOR UPDATE`,
       );
@@ -137,5 +161,8 @@ export class WalletService {
         .where(eq(wallets.id, TREASURY_WALLET_ID));
       return transaction;
     });
+
+    await this.storeIdempotency(idempotencyKey, result);
+    return result;
   }
 }

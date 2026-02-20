@@ -9,6 +9,7 @@
     "dotenv": "^17.3.1",
     "drizzle-orm": "^0.45.1",
     "elysia": "latest",
+    "ioredis": "^5.9.3",
     "pg": "^8.18.0",
     "postgres": "^3.4.8"
   },
