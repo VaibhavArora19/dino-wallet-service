@@ -6,6 +6,7 @@ import {
   pgEnum,
   numeric,
   check,
+  index,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -50,6 +51,7 @@ export const wallets = pgTable(
   },
   (table) => [
     check("balance_non_negative", sql`${table.balance} >= 0`),
+    index("wallets_user_id_idx").on(table.user_id),
   ],
 );
 
@@ -68,6 +70,7 @@ export const transactions = pgTable(
   },
   (table) => [
     check("amount_positive", sql`${table.amount} > 0`),
+    index("transactions_idempotency_key_idx").on(table.idempotency_key),
   ],
 );
 
@@ -88,5 +91,7 @@ export const ledgerEntries = pgTable(
   },
   (table) => [
     check("amount_positive", sql`${table.amount} > 0`),
+    index("ledger_entries_wallet_id_idx").on(table.wallet_id),
+    index("ledger_entries_transaction_id_idx").on(table.transaction_id),
   ],
 );
