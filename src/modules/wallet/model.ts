@@ -8,4 +8,10 @@ export namespace WalletModel {
   });
 
   export type assetTransactionBody = typeof assetTransactionBody.static;
+
+  export const walletParams = t.Object({
+    id: t.String(),
+  });
+
+  export type walletParams = typeof walletParams.static;
 }

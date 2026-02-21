@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, desc } from "drizzle-orm";
 import { db } from "../../db";
 import { redis } from "../../lib/redis";
 import { config } from "../../config";
@@ -20,6 +20,34 @@ export class WalletService {
 
   async spend(walletId: string, idempotencyKey: string, amount: number) {
     return this.debitWallet(walletId, idempotencyKey, amount);
+  }
+
+  async getBalance(walletId: string) {
+    const wallet = await db.query.wallets.findFirst({
+      where: eq(wallets.id, walletId),
+      columns: { id: true, balance: true, asset_id: true, type: true },
+    });
+
+    if (!wallet) throw new WalletError("Wallet not found", 404);
+
+    return wallet;
+  }
+
+  async getTransactions(walletId: string) {
+    const entries = await db
+      .select({
+        transactionId: transactions.id,
+        type: transactions.type,
+        amount: ledgerEntries.amount,
+        direction: ledgerEntries.direction,
+        createdAt: transactions.createdAt,
+      })
+      .from(ledgerEntries)
+      .innerJoin(transactions, eq(ledgerEntries.transaction_id, transactions.id))
+      .where(eq(ledgerEntries.wallet_id, walletId))
+      .orderBy(desc(transactions.createdAt));
+
+    return entries;
   }
 
   private async resolveIdempotency(idempotencyKey: string) {

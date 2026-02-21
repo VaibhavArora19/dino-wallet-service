@@ -47,4 +47,24 @@ export const wallet = new Elysia({ prefix: "/wallet" })
     {
       body: WalletModel.assetTransactionBody,
     },
+  )
+  .get(
+    "/:id/balance",
+    async ({ params }) => {
+      const walletService = new WalletService();
+      return walletService.getBalance(params.id);
+    },
+    {
+      params: WalletModel.walletParams,
+    },
+  )
+  .get(
+    "/:id/transactions",
+    async ({ params }) => {
+      const walletService = new WalletService();
+      return walletService.getTransactions(params.id);
+    },
+    {
+      params: WalletModel.walletParams,
+    },
   );
