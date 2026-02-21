@@ -4,6 +4,8 @@ A closed-loop virtual currency wallet service built for high-traffic gaming and 
 
 **Stack:** Bun · Elysia · Drizzle ORM · PostgreSQL · Redis
 
+**Live:** https://dino-wallet-service-production.up.railway.app/
+
 ---
 
 ## Running with Docker (recommended)
