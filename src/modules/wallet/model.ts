@@ -4,7 +4,7 @@ export namespace WalletModel {
   export const assetTransactionBody = t.Object({
     walletId: t.String(),
     idempotencyKey: t.String(),
-    amount: t.Number(),
+    amount: t.Number({ minimum: 0.00000001, error: "Amount must be greater than 0" }),
   });
 
   export type assetTransactionBody = typeof assetTransactionBody.static;
