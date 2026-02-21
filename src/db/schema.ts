@@ -8,7 +8,7 @@ import {
   check,
   index,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 
 export const accountTypeEnum = pgEnum("account_type", ["treasury", "user"]);
 
@@ -95,3 +95,11 @@ export const ledgerEntries = pgTable(
     index("ledger_entries_transaction_id_idx").on(table.transaction_id),
   ],
 );
+
+export const usersRelations = relations(users, ({ many }) => ({
+  wallets: many(wallets),
+}));
+
+export const walletsRelations = relations(wallets, ({ one }) => ({
+  user: one(users, { fields: [wallets.user_id], references: [users.id] }),
+}));

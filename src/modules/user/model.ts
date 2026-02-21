@@ -6,4 +6,10 @@ export namespace UserModel {
   });
 
   export type emailQuery = typeof emailQuery.static;
+
+  export const idParam = t.Object({
+    id: t.String(),
+  });
+
+  export type idParam = typeof idParam.static;
 }

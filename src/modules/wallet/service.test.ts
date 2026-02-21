@@ -83,7 +83,7 @@ describe("WalletService.getBalance", () => {
       id: WALLET_ID,
       balance: "100",
       asset_id: "asset-1",
-      type: "user",
+      type: "user" as const,
     };
     findFirstWallet.mockResolvedValueOnce(wallet);
 
@@ -190,6 +190,86 @@ describe("WalletService.spend", () => {
     expect(dbTransaction).toHaveBeenCalledTimes(1);
     expect(redisSet).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({ id: "tx-1" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe("WalletService.addBonus", () => {
+  it("returns cached result when idempotency key exists", async () => {
+    const cached = { id: "tx-cached", type: "bonus" };
+    redisGet.mockResolvedValueOnce(JSON.stringify(cached));
+
+    const result = await service.addBonus(WALLET_ID, IDEMPOTENCY_KEY, 50);
+
+    expect(result).toEqual(cached);
+    expect(dbTransaction).not.toHaveBeenCalled();
+  });
+
+  it("throws 404 when wallet is not found", async () => {
+    await expect(
+      service.addBonus(WALLET_ID, IDEMPOTENCY_KEY, 50),
+    ).rejects.toMatchObject({
+      message: "Wallet not found",
+      statusCode: 404,
+    });
+  });
+
+  it("throws 422 when treasury has insufficient funds", async () => {
+    txExecute
+      .mockResolvedValueOnce([{ id: WALLET_ID, asset_id: "asset-1", balance: "500" }])
+      .mockResolvedValueOnce([{ id: "treasury-wallet-id", balance: "10" }]); // 10 < 50
+
+    await expect(
+      service.addBonus(WALLET_ID, IDEMPOTENCY_KEY, 50),
+    ).rejects.toMatchObject({
+      message: "Treasury insufficient funds",
+      statusCode: 422,
+    });
+  });
+
+  it("creates transaction and caches idempotency key on success", async () => {
+    txExecute
+      .mockResolvedValueOnce([{ id: WALLET_ID, asset_id: "asset-1", balance: "500" }])
+      .mockResolvedValueOnce([{ id: "treasury-wallet-id", balance: "1000" }]);
+
+    const result = await service.addBonus(WALLET_ID, IDEMPOTENCY_KEY, 50);
+
+    expect(dbTransaction).toHaveBeenCalledTimes(1);
+    expect(redisSet).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ id: "tx-1", type: "topup" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe("WalletService.getTransactions", () => {
+  function mockSelectChain(rows: any[]) {
+    const offset = mock(async () => rows);
+    const limit = mock(() => ({ offset }));
+    const orderBy = mock(() => ({ limit }));
+    const where = mock(() => ({ orderBy }));
+    const innerJoin = mock(() => ({ where }));
+    const from = mock(() => ({ innerJoin }));
+    dbSelect.mockReturnValueOnce({ from } as any);
+    return rows;
+  }
+
+  it("returns empty array when wallet has no transactions", async () => {
+    mockSelectChain([]);
+
+    const result = await service.getTransactions(WALLET_ID);
+
+    expect(result).toEqual([]);
+  });
+
+  it("returns transaction entries for the wallet", async () => {
+    const entries = [
+      { transactionId: "tx-1", type: "topup" as const, amount: "100", direction: "credit" as const, createdAt: new Date() },
+    ];
+    mockSelectChain(entries);
+
+    const result = await service.getTransactions(WALLET_ID, 10, 0);
+
+    expect(result).toMatchObject(entries);
   });
 });
 
