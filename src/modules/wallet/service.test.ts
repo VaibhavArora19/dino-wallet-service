@@ -24,7 +24,6 @@ const txMock = { execute: txExecute, insert: txInsert, update: txUpdate };
 
 // --- db mock ---
 const findFirstWallet = mock(async () => null as any);
-const findFirstTransaction = mock(async () => null as any);
 const dbTransaction = mock(async (cb: (tx: typeof txMock) => any) =>
   cb(txMock),
 );
@@ -37,7 +36,6 @@ const dbSelect = mock(() => ({ from: dbSelectFrom }));
 const dbMock = {
   query: {
     wallets: { findFirst: findFirstWallet },
-    transactions: { findFirst: findFirstTransaction },
   },
   transaction: dbTransaction,
   select: dbSelect,
@@ -65,7 +63,6 @@ const IDEMPOTENCY_KEY = "idem-key-1";
 
 beforeEach(() => {
   findFirstWallet.mockReset();
-  findFirstTransaction.mockReset();
   dbTransaction.mockReset();
   dbTransaction.mockImplementation(async (cb) => cb(txMock));
   txExecute.mockReset();
@@ -151,6 +148,18 @@ describe("WalletService.topUp", () => {
     expect(dbTransaction).toHaveBeenCalledTimes(1);
     expect(redisSet).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({ id: "tx-1" });
+  });
+
+  it("throws 409 on concurrent duplicate idempotency key (race condition)", async () => {
+    const uniqueViolation = Object.assign(new Error("duplicate key"), { code: "23505" });
+    dbTransaction.mockRejectedValueOnce(uniqueViolation);
+
+    await expect(
+      service.topUp(WALLET_ID, IDEMPOTENCY_KEY, 100),
+    ).rejects.toMatchObject({
+      message: "Duplicate request: idempotency key already used",
+      statusCode: 409,
+    });
   });
 });
 

@@ -8,6 +8,10 @@ import { ledgerEntries, transactions, wallets } from "../../db/schema";
 const IDEMPOTENCY_TTL = 60 * 60 * 24; // 24 hours in seconds
 const UNIQUE_VIOLATION = "23505"; // Postgres error code for unique_violation
 
+function isUniqueViolation(error: any): boolean {
+  return error?.code === UNIQUE_VIOLATION || error?.cause?.code === UNIQUE_VIOLATION;
+}
+
 const TREASURY_WALLET_ID = config.wallet.treasuryWalletId;
 
 export class WalletService {
@@ -154,10 +158,8 @@ export class WalletService {
         return transaction;
       })
       .catch(async (error) => {
-        if (error?.code === UNIQUE_VIOLATION) {
-          return db.query.transactions.findFirst({
-            where: eq(transactions.idempotency_key, idempotencyKey),
-          });
+        if (isUniqueViolation(error)) {
+          throw new WalletError("Duplicate request: idempotency key already used", 409);
         }
         throw error;
       });
@@ -229,10 +231,8 @@ export class WalletService {
         return transaction;
       })
       .catch(async (error) => {
-        if (error?.code === UNIQUE_VIOLATION) {
-          return db.query.transactions.findFirst({
-            where: eq(transactions.idempotency_key, idempotencyKey),
-          });
+        if (isUniqueViolation(error)) {
+          throw new WalletError("Duplicate request: idempotency key already used", 409);
         }
         throw error;
       });
