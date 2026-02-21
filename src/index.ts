@@ -1,5 +1,6 @@
 import { Elysia } from "elysia";
 import { wallet } from "./modules/wallet";
+import { user } from "./modules/user";
 import { WalletError } from "./lib/errors";
 
 const app = new Elysia()
@@ -19,6 +20,7 @@ const app = new Elysia()
   })
   .get("/", () => "Dino backend is working...")
   .use(wallet)
+  .use(user)
   .listen(3000);
 
 console.log(
