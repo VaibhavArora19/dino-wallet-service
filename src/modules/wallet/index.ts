@@ -55,10 +55,11 @@ export const wallet = new Elysia({ prefix: "/wallet" })
   )
   .get(
     "/:id/transactions",
-    async ({ params }) => {
-      return walletService.getTransactions(params.id);
+    async ({ params, query }) => {
+      return walletService.getTransactions(params.id, query.limit, query.offset);
     },
     {
       params: WalletModel.walletParams,
+      query: WalletModel.paginationQuery,
     },
   );

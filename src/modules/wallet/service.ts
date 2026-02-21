@@ -6,6 +6,7 @@ import { WalletError } from "../../lib/errors";
 import { ledgerEntries, transactions, wallets } from "../../db/schema";
 
 const IDEMPOTENCY_TTL = 60 * 60 * 24; // 24 hours in seconds
+const UNIQUE_VIOLATION = "23505"; // Postgres error code for unique_violation
 
 const TREASURY_WALLET_ID = config.wallet.treasuryWalletId;
 
@@ -33,7 +34,7 @@ export class WalletService {
     return wallet;
   }
 
-  async getTransactions(walletId: string) {
+  async getTransactions(walletId: string, limit = 20, offset = 0) {
     const entries = await db
       .select({
         transactionId: transactions.id,
@@ -45,7 +46,9 @@ export class WalletService {
       .from(ledgerEntries)
       .innerJoin(transactions, eq(ledgerEntries.transaction_id, transactions.id))
       .where(eq(ledgerEntries.wallet_id, walletId))
-      .orderBy(desc(transactions.createdAt));
+      .orderBy(desc(transactions.createdAt))
+      .limit(limit)
+      .offset(offset);
 
     return entries;
   }
@@ -74,58 +77,67 @@ export class WalletService {
     const cached = await this.resolveIdempotency(idempotencyKey);
     if (cached) return cached;
 
-    const result = await db.transaction(async (tx) => {
-      const [wallet] = await tx.execute(
-        sql`SELECT * FROM wallets WHERE id = ${walletId} FOR UPDATE`,
-      );
+    const result = await db
+      .transaction(async (tx) => {
+        const [wallet] = await tx.execute(
+          sql`SELECT * FROM wallets WHERE id = ${walletId} FOR UPDATE`,
+        );
 
-      if (!wallet) throw new WalletError("Wallet not found", 404);
+        if (!wallet) throw new WalletError("Wallet not found", 404);
 
-      const [treasury] = await tx.execute(
-        sql`SELECT * FROM wallets WHERE id = ${TREASURY_WALLET_ID} FOR UPDATE`,
-      );
+        const [treasury] = await tx.execute(
+          sql`SELECT * FROM wallets WHERE id = ${TREASURY_WALLET_ID} FOR UPDATE`,
+        );
 
-      if (Number(treasury.balance) < amount) {
-        throw new WalletError("Treasury insufficient funds", 422);
-      }
+        if (Number(treasury.balance) < amount) {
+          throw new WalletError("Treasury insufficient funds", 422);
+        }
 
-      const [transaction] = await tx
-        .insert(transactions)
-        .values({
-          idempotency_key: idempotencyKey,
-          type,
-          asset_id: wallet.asset_id as string,
-          amount: String(amount),
-        })
-        .returning();
+        const [transaction] = await tx
+          .insert(transactions)
+          .values({
+            idempotency_key: idempotencyKey,
+            type,
+            asset_id: wallet.asset_id as string,
+            amount: String(amount),
+          })
+          .returning();
 
-      await tx.insert(ledgerEntries).values([
-        {
-          transaction_id: transaction.id,
-          wallet_id: TREASURY_WALLET_ID,
-          direction: "debit" as const,
-          amount: String(amount),
-        },
-        {
-          transaction_id: transaction.id,
-          wallet_id: wallet.id as string,
-          direction: "credit" as const,
-          amount: String(amount),
-        },
-      ]);
+        await tx.insert(ledgerEntries).values([
+          {
+            transaction_id: transaction.id,
+            wallet_id: TREASURY_WALLET_ID,
+            direction: "debit" as const,
+            amount: String(amount),
+          },
+          {
+            transaction_id: transaction.id,
+            wallet_id: wallet.id as string,
+            direction: "credit" as const,
+            amount: String(amount),
+          },
+        ]);
 
-      await tx
-        .update(wallets)
-        .set({
-          balance: sql`CASE
-            WHEN id = ${wallet.id as string}::uuid THEN balance + ${amount}
-            WHEN id = ${TREASURY_WALLET_ID}::uuid  THEN balance - ${amount}
-          END`,
-        })
-        .where(sql`id IN (${wallet.id as string}::uuid, ${TREASURY_WALLET_ID}::uuid)`);
+        await tx
+          .update(wallets)
+          .set({
+            balance: sql`CASE
+              WHEN id = ${wallet.id as string}::uuid THEN balance + ${amount}
+              WHEN id = ${TREASURY_WALLET_ID}::uuid  THEN balance - ${amount}
+            END`,
+          })
+          .where(sql`id IN (${wallet.id as string}::uuid, ${TREASURY_WALLET_ID}::uuid)`);
 
-      return transaction;
-    });
+        return transaction;
+      })
+      .catch(async (error) => {
+        if (error?.code === UNIQUE_VIOLATION) {
+          return db.query.transactions.findFirst({
+            where: eq(transactions.idempotency_key, idempotencyKey),
+          });
+        }
+        throw error;
+      });
 
     await this.storeIdempotency(idempotencyKey, result);
     return result;
@@ -139,59 +151,68 @@ export class WalletService {
     const cached = await this.resolveIdempotency(idempotencyKey);
     if (cached) return cached;
 
-    const result = await db.transaction(async (tx) => {
-      const [wallet] = await tx.execute(
-        sql`SELECT * FROM wallets WHERE id = ${walletId} FOR UPDATE`,
-      );
+    const result = await db
+      .transaction(async (tx) => {
+        const [wallet] = await tx.execute(
+          sql`SELECT * FROM wallets WHERE id = ${walletId} FOR UPDATE`,
+        );
 
-      if (!wallet) throw new WalletError("Wallet not found", 404);
+        if (!wallet) throw new WalletError("Wallet not found", 404);
 
-      // Lock treasury row for the balance update below
-      await tx.execute(
-        sql`SELECT id FROM wallets WHERE id = ${TREASURY_WALLET_ID} FOR UPDATE`,
-      );
+        // Lock treasury row for the balance update below
+        await tx.execute(
+          sql`SELECT id FROM wallets WHERE id = ${TREASURY_WALLET_ID} FOR UPDATE`,
+        );
 
-      if (Number(wallet.balance) < amount) {
-        throw new WalletError("Insufficient funds", 422);
-      }
+        if (Number(wallet.balance) < amount) {
+          throw new WalletError("Insufficient funds", 422);
+        }
 
-      const [transaction] = await tx
-        .insert(transactions)
-        .values({
-          idempotency_key: idempotencyKey,
-          type: "spend",
-          asset_id: wallet.asset_id as string,
-          amount: String(amount),
-        })
-        .returning();
+        const [transaction] = await tx
+          .insert(transactions)
+          .values({
+            idempotency_key: idempotencyKey,
+            type: "spend",
+            asset_id: wallet.asset_id as string,
+            amount: String(amount),
+          })
+          .returning();
 
-      await tx.insert(ledgerEntries).values([
-        {
-          transaction_id: transaction.id,
-          wallet_id: TREASURY_WALLET_ID,
-          direction: "credit" as const,
-          amount: String(amount),
-        },
-        {
-          transaction_id: transaction.id,
-          wallet_id: wallet.id as string,
-          direction: "debit" as const,
-          amount: String(amount),
-        },
-      ]);
+        await tx.insert(ledgerEntries).values([
+          {
+            transaction_id: transaction.id,
+            wallet_id: TREASURY_WALLET_ID,
+            direction: "credit" as const,
+            amount: String(amount),
+          },
+          {
+            transaction_id: transaction.id,
+            wallet_id: wallet.id as string,
+            direction: "debit" as const,
+            amount: String(amount),
+          },
+        ]);
 
-      await tx
-        .update(wallets)
-        .set({
-          balance: sql`CASE
-            WHEN id = ${wallet.id as string}::uuid THEN balance - ${amount}
-            WHEN id = ${TREASURY_WALLET_ID}::uuid  THEN balance + ${amount}
-          END`,
-        })
-        .where(sql`id IN (${wallet.id as string}::uuid, ${TREASURY_WALLET_ID}::uuid)`);
+        await tx
+          .update(wallets)
+          .set({
+            balance: sql`CASE
+              WHEN id = ${wallet.id as string}::uuid THEN balance - ${amount}
+              WHEN id = ${TREASURY_WALLET_ID}::uuid  THEN balance + ${amount}
+            END`,
+          })
+          .where(sql`id IN (${wallet.id as string}::uuid, ${TREASURY_WALLET_ID}::uuid)`);
 
-      return transaction;
-    });
+        return transaction;
+      })
+      .catch(async (error) => {
+        if (error?.code === UNIQUE_VIOLATION) {
+          return db.query.transactions.findFirst({
+            where: eq(transactions.idempotency_key, idempotencyKey),
+          });
+        }
+        throw error;
+      });
 
     await this.storeIdempotency(idempotencyKey, result);
     return result;
