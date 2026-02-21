@@ -2,12 +2,12 @@ import Elysia from "elysia";
 import { WalletService } from "./service";
 import { WalletModel } from "./model";
 
+const walletService = new WalletService();
+
 export const wallet = new Elysia({ prefix: "/wallet" })
   .post(
     "/topup",
     async ({ body }) => {
-      const walletService = new WalletService();
-
       return walletService.topUp(
         body.walletId,
         body.idempotencyKey,
@@ -21,8 +21,6 @@ export const wallet = new Elysia({ prefix: "/wallet" })
   .post(
     "/spend",
     async ({ body }) => {
-      const walletService = new WalletService();
-
       return walletService.spend(
         body.walletId,
         body.idempotencyKey,
@@ -36,8 +34,6 @@ export const wallet = new Elysia({ prefix: "/wallet" })
   .post(
     "/bonus",
     async ({ body }) => {
-      const walletService = new WalletService();
-
       return walletService.addBonus(
         body.walletId,
         body.idempotencyKey,
@@ -51,7 +47,6 @@ export const wallet = new Elysia({ prefix: "/wallet" })
   .get(
     "/:id/balance",
     async ({ params }) => {
-      const walletService = new WalletService();
       return walletService.getBalance(params.id);
     },
     {
@@ -61,7 +56,6 @@ export const wallet = new Elysia({ prefix: "/wallet" })
   .get(
     "/:id/transactions",
     async ({ params }) => {
-      const walletService = new WalletService();
       return walletService.getTransactions(params.id);
     },
     {

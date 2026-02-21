@@ -114,17 +114,15 @@ export class WalletService {
         },
       ]);
 
-      //Increase balance in user wallet
       await tx
         .update(wallets)
-        .set({ balance: sql`balance + ${amount}` })
-        .where(eq(wallets.id, wallet.id as string));
-
-      //Decrease balance from treasury wallet
-      await tx
-        .update(wallets)
-        .set({ balance: sql`balance - ${amount}` })
-        .where(eq(wallets.id, TREASURY_WALLET_ID));
+        .set({
+          balance: sql`CASE
+            WHEN id = ${wallet.id as string}::uuid THEN balance + ${amount}
+            WHEN id = ${TREASURY_WALLET_ID}::uuid  THEN balance - ${amount}
+          END`,
+        })
+        .where(sql`id IN (${wallet.id as string}::uuid, ${TREASURY_WALLET_ID}::uuid)`);
 
       return transaction;
     });
@@ -182,17 +180,15 @@ export class WalletService {
         },
       ]);
 
-      //Decrease balance from user wallet
       await tx
         .update(wallets)
-        .set({ balance: sql`balance - ${amount}` })
-        .where(eq(wallets.id, wallet.id as string));
-
-      //Increase balance in treasury wallet
-      await tx
-        .update(wallets)
-        .set({ balance: sql`balance + ${amount}` })
-        .where(eq(wallets.id, TREASURY_WALLET_ID));
+        .set({
+          balance: sql`CASE
+            WHEN id = ${wallet.id as string}::uuid THEN balance - ${amount}
+            WHEN id = ${TREASURY_WALLET_ID}::uuid  THEN balance + ${amount}
+          END`,
+        })
+        .where(sql`id IN (${wallet.id as string}::uuid, ${TREASURY_WALLET_ID}::uuid)`);
 
       return transaction;
     });
