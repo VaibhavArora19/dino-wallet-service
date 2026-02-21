@@ -1,13 +1,13 @@
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { eq } from "drizzle-orm";
-import * as fs from "fs";
-import * as path from "path";
 import * as schema from "../src/db/schema";
+import { config } from "../src/config";
 
 const { assets, users, wallets } = schema;
+const { treasuryWalletId: TREASURY_WALLET_ID } = config.wallet;
 
-const client = postgres(Bun.env.DATABASE_URL!);
+const client = postgres(config.db.url);
 const db = drizzle(client, { schema });
 
 async function seed() {
@@ -26,26 +26,18 @@ async function seed() {
 
   console.log("Asset:", diamonds.symbol);
 
-  // 2. Treasury wallet (no user_id)
-  let treasury = await db.query.wallets.findFirst({
-    where: eq(wallets.type, "treasury"),
-  });
+  // 2. Treasury wallet — fixed UUID so TREASURY_WALLET_ID is always known
+  await db
+    .insert(wallets)
+    .values({
+      id: TREASURY_WALLET_ID,
+      type: "treasury",
+      asset_id: diamonds.id,
+      balance: "10000000", // 10M starting supply
+    })
+    .onConflictDoNothing(); // PK conflict on re-run — safe to skip
 
-  if (!treasury) {
-    [treasury] = await db
-      .insert(wallets)
-      .values({
-        type: "treasury",
-        asset_id: diamonds.id,
-        balance: "10000000", // 10M starting supply
-      })
-      .returning();
-    console.log("Treasury wallet created");
-  } else {
-    console.log("Treasury wallet already exists, skipping");
-  }
-
-  console.log("Treasury wallet ID:", treasury.id);
+  console.log("Treasury wallet ID:", TREASURY_WALLET_ID);
 
   // 3. Users
   const insertedUsers = await db
@@ -104,16 +96,6 @@ async function seed() {
     console.log("Bob wallet already exists, skipping");
   }
 
-  // Write treasury wallet ID to .env
-  const envPath = path.resolve(import.meta.dir, "../.env");
-  let envContent = fs.readFileSync(envPath, "utf-8");
-  envContent = envContent.replace(
-    /TREASURY_WALLET_ID=.*/,
-    `TREASURY_WALLET_ID=${treasury.id}`,
-  );
-  fs.writeFileSync(envPath, envContent);
-
-  console.log(`TREASURY_WALLET_ID written to .env: ${treasury.id}`);
   console.log("Seeding complete.");
 }
 

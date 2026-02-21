@@ -18,7 +18,7 @@ export const transactionTypeEnum = pgEnum("transaction_type", [
   "spend",
 ]);
 
-const entryDirectionEnum = pgEnum("entry_direction", ["debit", "credit"]);
+export const entryDirectionEnum = pgEnum("entry_direction", ["debit", "credit"]);
 
 export const assets = pgTable("assets", {
   id: uuid("id").defaultRandom().primaryKey().notNull(),

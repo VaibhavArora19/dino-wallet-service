@@ -4,7 +4,9 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "bun run --watch src/index.ts",
-    "seed": "bun run scripts/seed.ts"
+    "seed": "bun run scripts/seed.ts",
+    "migrate": "bunx drizzle-kit migrate",
+    "start": "bun run src/index.ts"
   },
   "dependencies": {
     "dotenv": "^17.3.1",

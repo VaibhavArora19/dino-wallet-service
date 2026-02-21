@@ -34,6 +34,29 @@ export class WalletService {
     return wallet;
   }
 
+  async verifyBalance(walletId: string) {
+    const wallet = await db.query.wallets.findFirst({
+      where: eq(wallets.id, walletId),
+      columns: { id: true, balance: true },
+    });
+
+    if (!wallet) throw new WalletError("Wallet not found", 404);
+
+    const [result] = await db
+      .select({
+        ledgerBalance:
+          sql<string>`COALESCE(SUM(CASE WHEN direction = 'credit' THEN amount ELSE -amount END), 0)`,
+      })
+      .from(ledgerEntries)
+      .where(eq(ledgerEntries.wallet_id, walletId));
+
+    const storedBalance = Number(wallet.balance);
+    const ledgerBalance = Number(result.ledgerBalance);
+    const isInSync = storedBalance === ledgerBalance;
+
+    return { storedBalance, ledgerBalance, isInSync };
+  }
+
   async getTransactions(walletId: string, limit = 20, offset = 0) {
     const entries = await db
       .select({

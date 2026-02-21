@@ -3,7 +3,12 @@ import { wallet } from "./modules/wallet";
 import { WalletError } from "./lib/errors";
 
 const app = new Elysia()
-  .onError(({ error, set }) => {
+  .onError(({ error, set, code }) => {
+    if (code === "NOT_FOUND") {
+      set.status = 404;
+      return { error: "Route not found" };
+    }
+
     if (error instanceof WalletError) {
       set.status = error.statusCode;
       return { error: error.message };
